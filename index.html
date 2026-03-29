@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Follow Trip - Sistema</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<!-- FIREBASE -->
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
+<style>
+body {
+  margin: 0;
+  font-family: 'Poppins', sans-serif;
+  background: #000;
+  color: #fff;
+}
+
+.container {
+  max-width: 900px;
+  margin: auto;
+  padding: 20px;
+}
+
+h2 { color: #ff2d2d; }
+
+input, textarea, select {
+  width: 100%;
+  padding: 12px;
+  margin: 10px 0;
+  background: #111;
+  border: 1px solid #333;
+  color: #fff;
+}
+
+button {
+  background: #ff2d2d;
+  padding: 12px;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+}
+
+.card {
+  border: 1px solid #ff2d2d;
+  padding: 20px;
+  margin: 10px 0;
+}
+
+.hidden { display:none; }
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<!-- LOGIN ADMIN -->
+<div id="login">
+  <h2>Área Admin</h2>
+  <input type="email" id="adminEmail" placeholder="Email">
+  <input type="password" id="adminPass" placeholder="Senha">
+  <button onclick="login()">Entrar</button>
+</div>
+
+<!-- ADMIN -->
+<div id="admin" class="hidden">
+  <h2>Painel Admin</h2>
+
+  <input id="nomeEvento" placeholder="Nome do evento">
+  <textarea id="contratoEvento" placeholder="Contrato do evento"></textarea>
+
+  <button onclick="criarEvento()">Criar Evento</button>
+
+  <div id="listaEventos"></div>
+</div>
+
+<!-- CLIENTE -->
+<div id="cliente">
+  <h2>Inscrição</h2>
+
+  <select id="eventos"></select>
+
+  <div id="contratoBox" class="card"></div>
+
+  <input id="nome" placeholder="Nome completo">
+  <input id="cpf" placeholder="CPF">
+  <input id="email" placeholder="Email">
+  <input id="telefone" placeholder="Telefone">
+  <input id="assinatura" placeholder="Digite seu nome como assinatura">
+
+  <p><input type="checkbox" id="lgpd"> Aceito LGPD e contrato</p>
+
+  <button onclick="enviar()">Assinar e Baixar Contrato</button>
+</div>
+
+</div>
+
+<script>
+
+// 🔥 CONFIG FIREBASE (SUBSTITUIR)
+const firebaseConfig = {
+  apiKey: "SUA_API_KEY",
+  authDomain: "SEU_AUTH_DOMAIN",
+  projectId: "SEU_PROJECT_ID"
+};
+
+firebase.initializeApp(firebaseConfig);
+
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+// LOGIN ADMIN
+function login(){
+  auth.signInWithEmailAndPassword(
+    adminEmail.value,
+    adminPass.value
+  ).then(()=>{
+    alert("Logado 🔥");
+    document.getElementById("admin").classList.remove("hidden");
+  }).catch(()=>{
+    alert("Erro no login");
+  });
+}
+
+// CRIAR EVENTO
+async function criarEvento(){
+  await db.collection("eventos").add({
+    nome: nomeEvento.value,
+    contrato: contratoEvento.value,
+    criadoEm: new Date()
+  });
+
+  alert("Evento criado 🔥");
+  carregarEventos();
+}
+
+// LISTAR EVENTOS
+async function carregarEventos(){
+  const snapshot = await db.collection("eventos").get();
+
+  eventos.innerHTML = "<option>Selecione o evento</option>";
+
+  snapshot.forEach(doc=>{
+    let e = doc.data();
+
+    eventos.innerHTML += `
+      <option value="${doc.id}">
+        ${e.nome}
+      </option>
+    `;
+  });
+}
+
+// MOSTRAR CONTRATO
+eventos.addEventListener("change", async ()=>{
+  let doc = await db.collection("eventos").doc(eventos.value).get();
+  contratoBox.innerText = doc.data().contrato;
+});
+
+// GERAR PDF
+async function gerarPDF(dados, contrato){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+
+  doc.setFontSize(16);
+  doc.text("CONTRATO FOLLOW TRIP", 10, 10);
+
+  doc.setFontSize(12);
+  doc.text(`Nome: ${dados.nome}`, 10, 30);
+  doc.text(`CPF: ${dados.cpf}`, 10, 40);
+  doc.text(`Evento: ${dados.evento}`, 10, 50);
+  doc.text(`Data/Hora: ${dados.data}`, 10, 60);
+
+  doc.text("Contrato:", 10, 80);
+  doc.text(contrato, 10, 90, { maxWidth: 180 });
+
+  doc.text("Assinatura Digital:", 10, 150);
+  doc.text(dados.nome, 10, 160);
+
+  doc.save("contrato-followtrip.pdf");
+}
+
+// ENVIO CLIENTE
+async function enviar(){
+
+  if(!lgpd.checked){
+    alert("Aceite os termos");
+    return;
+  }
+
+  let eventoDoc = await db.collection("eventos").doc(eventos.value).get();
+
+  let dados = {
+    nome: nome.value,
+    cpf: cpf.value,
+    email: email.value,
+    telefone: telefone.value,
+    evento: eventoDoc.data().nome,
+    data: new Date().toLocaleString()
+  };
+
+  await db.collection("clientes").add(dados);
+
+  gerarPDF(dados, eventoDoc.data().contrato);
+
+  alert("Contrato gerado com sucesso 🔥");
+}
+
+// INIT
+carregarEventos();
+
+</script>
+
+</body>
+</html>
